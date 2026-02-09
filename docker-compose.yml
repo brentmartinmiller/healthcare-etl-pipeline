@@ -1,0 +1,33 @@
+version: "3.9"
+
+services:
+  db:
+    image: postgres:16-alpine
+    environment:
+      POSTGRES_USER: etl_user
+      POSTGRES_PASSWORD: etl_pass
+      POSTGRES_DB: healthcare_etl
+    ports:
+      - "5432:5432"
+    volumes:
+      - pgdata:/var/lib/postgresql/data
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U etl_user -d healthcare_etl"]
+      interval: 5s
+      timeout: 5s
+      retries: 5
+
+  api:
+    build: .
+    ports:
+      - "8000:8000"
+    environment:
+      DATABASE_URL: postgresql://etl_user:etl_pass@db:5432/healthcare_etl
+      PHI_ENCRYPTION_KEY: ""  # auto-generated in dev; set a real Fernet key in prod
+      ENVIRONMENT: development
+    depends_on:
+      db:
+        condition: service_healthy
+
+volumes:
+  pgdata:
