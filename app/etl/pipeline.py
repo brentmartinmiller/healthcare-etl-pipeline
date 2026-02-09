@@ -92,6 +92,14 @@ def transform(context: dict[str, Any]) -> dict[str, Any]:
     transformed = []
 
     for record in records:
+        # Strip PHI fields from the FHIR payload before storage —
+        # the encrypted versions live on the patients table instead.
+        sanitized_fhir = {
+            k: v
+            for k, v in record.items()
+            if k not in ("name", "birthDate", "ssn")
+        }
+
         transformed.append(
             {
                 "mrn": record["mrn"],
@@ -102,7 +110,7 @@ def transform(context: dict[str, Any]) -> dict[str, Any]:
                 else None,
                 "gender": record.get("gender"),
                 "resource_type": "Patient",
-                "fhir_resource": record,  # keep original FHIR payload
+                "fhir_resource": sanitized_fhir,
             }
         )
 

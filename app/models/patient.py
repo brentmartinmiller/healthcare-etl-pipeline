@@ -9,7 +9,7 @@ Demonstrates:
 """
 
 import uuid
-from datetime import datetime
+from datetime import datetime, timezone
 
 from sqlalchemy import (
     Boolean,
@@ -43,8 +43,8 @@ class Patient(Base):
     # Non-sensitive operational fields
     mrn = Column(String(64), unique=True, nullable=False, comment="Medical Record Number")
     gender = Column(String(16))
-    created_at = Column(DateTime, default=datetime.utcnow, nullable=False)
-    updated_at = Column(DateTime, default=datetime.utcnow, onupdate=datetime.utcnow)
+    created_at = Column(DateTime, default=lambda: datetime.now(timezone.utc), nullable=False)
+    updated_at = Column(DateTime, default=lambda: datetime.now(timezone.utc), onupdate=lambda: datetime.now(timezone.utc))
 
     consents = relationship("ConsentRecord", back_populates="patient", lazy="selectin")
     records = relationship("ClinicalRecord", back_populates="patient", lazy="selectin")
@@ -89,7 +89,7 @@ class ClinicalRecord(Base):
     )
     fhir_resource = Column(JSONB, nullable=False, comment="Full FHIR JSON payload")
     status = Column(String(32), default="active")
-    recorded_at = Column(DateTime, default=datetime.utcnow)
+    recorded_at = Column(DateTime, default=lambda: datetime.now(timezone.utc))
 
     patient = relationship("Patient", back_populates="records")
 
@@ -111,7 +111,7 @@ class AuditLog(Base):
     resource_type = Column(String(64), nullable=False)
     resource_id = Column(UUID(as_uuid=True), nullable=False)
     detail = Column(JSONB, comment="Diff or context for the action")
-    timestamp = Column(DateTime, default=datetime.utcnow, nullable=False)
+    timestamp = Column(DateTime, default=lambda: datetime.now(timezone.utc), nullable=False)
 
     __table_args__ = (Index("ix_audit_timestamp", "timestamp"),)
 

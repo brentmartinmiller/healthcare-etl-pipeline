@@ -7,7 +7,6 @@ Demonstrates:
 - Encrypt/decrypt interface for use in ETL transforms
 """
 
-import base64
 import os
 
 from cryptography.fernet import Fernet

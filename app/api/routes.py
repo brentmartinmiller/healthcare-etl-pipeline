@@ -11,10 +11,12 @@ Demonstrates:
 from __future__ import annotations
 
 import logging
-from datetime import datetime
+from datetime import datetime, timezone
 from uuid import UUID
 
 from fastapi import APIRouter, Depends, HTTPException
+from sqlalchemy import text
+from sqlalchemy.exc import IntegrityError
 from sqlalchemy.orm import Session
 
 from app.config import settings
@@ -48,7 +50,7 @@ router = APIRouter()
 def health_check(db: Session = Depends(get_db)):
     """Basic health endpoint – verifies DB connectivity."""
     try:
-        db.execute("SELECT 1")  # type: ignore[arg-type]
+        db.execute(text("SELECT 1"))
         db_status = "connected"
     except Exception:
         db_status = "disconnected"
@@ -91,7 +93,14 @@ def ingest_patients(request: IngestionRequest, db: Session = Depends(get_db)):
             gender=record.get("gender"),
         )
         db.add(patient)
-        db.flush()
+        try:
+            db.flush()
+        except IntegrityError:
+            db.rollback()
+            raise HTTPException(
+                status_code=409,
+                detail=f"Patient with MRN '{record['mrn']}' already exists",
+            )
 
         # Store consent
         consent_data = record.get("fhir_resource", {}).get("consent", {})
@@ -101,7 +110,7 @@ def ingest_patients(request: IngestionRequest, db: Session = Depends(get_db)):
                     patient_id=patient.id,
                     consent_type=consent_type,
                     granted=granted,
-                    granted_at=datetime.now(datetime.timezone.utc) if granted else None,
+                    granted_at=datetime.now(timezone.utc) if granted else None,
                 )
             )
 
@@ -128,8 +137,8 @@ def ingest_patients(request: IngestionRequest, db: Session = Depends(get_db)):
     pipeline_run = PipelineRun(
         pipeline_name=pipeline.name,
         status=result["status"],
-        started_at=datetime.now(datetime.timezone.utc),
-        completed_at=datetime.now(datetime.timezone.utc),
+        started_at=datetime.now(timezone.utc),
+        completed_at=datetime.now(timezone.utc),
         input_record_count=str(len(raw_records)),
         output_record_count=str(persisted_count),
         errors=result.get("tasks", {}),
@@ -197,22 +206,31 @@ def get_patient(patient_id: UUID, db: Session = Depends(get_db)):
 
 
 @router.get("/patients", response_model=list[PatientResponse])
-def list_patients(db: Session = Depends(get_db)):
-    """List all patients who have granted data sharing consent."""
-    patients = db.query(Patient).all()
-    results = []
-    for patient in patients:
-        has_consent = any(
-            c.consent_type == "data_sharing" and c.granted for c in patient.consents
+def list_patients(
+    offset: int = 0,
+    limit: int = 50,
+    db: Session = Depends(get_db),
+):
+    """List patients who have granted data sharing consent (paginated)."""
+    limit = min(limit, 200)
+    patients = (
+        db.query(Patient)
+        .join(ConsentRecord)
+        .filter(
+            ConsentRecord.consent_type == "data_sharing",
+            ConsentRecord.granted.is_(True),
         )
-        if has_consent:
-            results.append(
-                PatientResponse(
-                    id=patient.id,
-                    mrn=patient.mrn,
-                    gender=patient.gender,
-                    created_at=patient.created_at,
-                    has_data_sharing_consent=True,
-                )
-            )
-    return results
+        .offset(offset)
+        .limit(limit)
+        .all()
+    )
+    return [
+        PatientResponse(
+            id=p.id,
+            mrn=p.mrn,
+            gender=p.gender,
+            created_at=p.created_at,
+            has_data_sharing_consent=True,
+        )
+        for p in patients
+    ]

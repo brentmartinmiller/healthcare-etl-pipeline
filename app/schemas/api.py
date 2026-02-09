@@ -25,7 +25,7 @@ class PatientRecord(BaseModel):
 
 class IngestionRequest(BaseModel):
     """Batch of patient records to ingest through the ETL pipeline."""
-    records: list[PatientRecord] = Field(..., min_length=1)
+    records: list[PatientRecord] = Field(..., min_length=1, max_length=1000)
 
 
 class TaskSummary(BaseModel):

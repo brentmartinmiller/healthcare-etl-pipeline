@@ -27,6 +27,12 @@ def test_full_pipeline_happy_path():
     assert loaded["encrypted_name"] != "Jane Doe"
     assert loaded["mrn"] == "MRN-001"
 
+    # PHI must be stripped from the FHIR payload stored in clinical_records
+    fhir = loaded["fhir_resource"]
+    assert "name" not in fhir
+    assert "birthDate" not in fhir
+    assert "ssn" not in fhir
+
 
 def test_invalid_record_rejected():
     """A record missing required 'name' field fails validation."""
